@@ -10,10 +10,18 @@
 
 (println "Edits to this text should show up in your developer console.")
 
+(def LIST_COUNT 25)
+
 ;; define your app data so that it doesn't get over-written on reload
 (defonce app-state 
   (atom {:text "Hello world!"
          :list []}))
+
+(defn loading-view [data owner]
+  (reify
+    om/IRender
+    (render [_]
+      (dom/div nil "Loading......" data))))
 
 (defn story-view [id owner]
   (reify
@@ -24,34 +32,36 @@
 
     om/IWillMount
     (will-mount [this]
-      (println "mounting" id)
       (go
         (let [story (<! (api/get-item id))]
           (om/set-state! owner :story story))))
 
-    om/IRenderState
-    (render-state [this state]
-      (let [story (om/get-state owner :story)]
-        (dom/div nil (:title story) " - " (:url story))))))
-
-
+    om/IRender
+    (render [this]
+      (let [story (om/get-state owner :story)
+            loading? (= (count (keys story)) 0)]
+        (if loading?
+          (om/build loading-view id)
+          (dom/div nil 
+            (dom/a #js{:href (:url story)} (:title story))
+            (dom/span nil (js/Date (:time story)))
+            (dom/span nil " score: " (:score story))
+            (dom/span nil " comments: "( :descendants story))))))))
 
 (defn root-view [data owner]
   (reify 
-    om/IDidMount
-    (did-mount [_]
-      (println "did mount")
+    om/IWillMount
+    (will-mount [_]
       (if (= (count (om/get-state owner :list)) 0)
         (go
           (let [stories (<! (api/top-stories))]
-            (om/set-state! owner :list (take 10 stories))))))
+            (om/set-state! owner :list (take LIST_COUNT stories))))))
 
     om/IRender
     (render [this]
       (let [stories (om/get-state owner :list)]
-        (println "root render" (count stories))
         (if (= (count stories) 0)
-          (dom/div nil "Loading..." stories)
+          (om/build loading-view "News IDs")
           (dom/div nil 
             (om/build-all story-view stories)))))))
 
